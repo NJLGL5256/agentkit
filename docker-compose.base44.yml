@@ -1,0 +1,99 @@
+name: agentkit-base44
+
+# Base44 sandbox/dev stack for the AgentKit monorepo.
+#
+# The repository is an SDK monorepo (Python + TypeScript packages), so there is no
+# application server of its own. The user-facing surface that `npm create onchain-agent`
+# produces is the Next.js quickstart chat UI in
+# `typescript/create-onchain-agent/templates/next`. This service materialises that
+# template exactly the way the CLI does (promote the selected API route files, mirroring
+# `handleNextSelection`) into the git-ignored `.base44/preview-app` directory and runs it
+# with `next dev`, so edits to the template in this repo show up in the preview.
+services:
+  quickstart-web:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - npm-cache:/root/.npm
+    environment:
+      - BASE44_PREVIEW_MODE
+      - BASE44_PUBLIC_HOST_SUFFIX
+      - BASE44_SANDBOX_HOST_DOMAIN
+      - NEXT_TELEMETRY_DISABLED=1
+    env_file:
+      # Placeholders / non-secret defaults first, platform-delivered secrets last so the
+      # dashboard value always wins.
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    command:
+      - sh
+      - -ec
+      - |
+        APP=".base44/preview-app"
+        TPL="typescript/create-onchain-agent/templates/next"
+
+        # Regenerate the project from the in-repo template on every start (keeps
+        # node_modules/.next so restarts stay fast).
+        mkdir -p "$APP"
+        cp -R "$TPL"/. "$APP"/
+        mv -f "$APP"/_gitignore "$APP"/.gitignore
+        cd "$APP"
+
+        # Same promotion the CLI's handleNextSelection does: framework = Vercel AI SDK,
+        # wallet provider = CDP EVM wallet, network = base-sepolia.
+        mv -f app/api/agent/agentkit/evm/cdp/prepare-agentkit.ts app/api/agent/prepare-agentkit.ts
+        mv -f app/api/agent/framework/vercel-ai-sdk/create-agent.ts app/api/agent/create-agent.ts
+        mv -f app/api/agent/framework/vercel-ai-sdk/route.ts app/api/agent/route.ts
+        rm -rf app/api/agent/agentkit app/api/agent/framework
+
+        # The template ships an ESM `next.config.js`; use `.mjs` so Next parses it
+        # unambiguously, and allow the preview proxy's origin for dev assets + HMR.
+        rm -f next.config.js
+        cat > next.config.mjs <<'EOF'
+        /** @type {import('next').NextConfig} */
+        const previewOrigins =
+          process.env.BASE44_PREVIEW_MODE === "1"
+            ? [
+                ...(process.env.BASE44_PUBLIC_HOST_SUFFIX
+                  ? [`3000-${process.env.BASE44_PUBLIC_HOST_SUFFIX}`]
+                  : []),
+                ...(process.env.BASE44_SANDBOX_HOST_DOMAIN
+                  ? [`*.${process.env.BASE44_SANDBOX_HOST_DOMAIN}`]
+                  : []),
+              ]
+            : [];
+
+        const nextConfig = {
+          reactStrictMode: true,
+          ...(previewOrigins.length ? { allowedDevOrigins: previewOrigins } : {}),
+        };
+
+        export default nextConfig;
+        EOF
+
+        npm install --no-audit --no-fund
+        exec npx next dev -H 0.0.0.0 -p 3000
+    healthcheck:
+      # Real request against the app (Next dev compiles on demand, hence the grace period).
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    restart: on-failure
+    labels:
+      base44.project: "AgentKit Quickstart"
+      base44.kind: "web"
+      base44.port: "3000"
+
+volumes:
+  npm-cache:

@@ -1,0 +1,27 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "OpenAI API key used by the quickstart chat agent (platform.openai.com/api-keys). Without it the UI loads but chatting returns a message that the key is missing.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CDP_API_KEY_ID",
+      "description": "Coinbase Developer Platform secret API key ID (portal.cdp.coinbase.com > API keys) used to create the agent's EVM wallet.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CDP_API_KEY_SECRET",
+      "description": "Coinbase Developer Platform secret API key secret, paired with CDP_API_KEY_ID.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CDP_WALLET_SECRET",
+      "description": "CDP wallet secret (portal.cdp.coinbase.com > Wallets) that lets the agent sign with its server wallet.",
+      "requiredAtBoot": false
+    }
+  ]
+}
